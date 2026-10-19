@@ -8,6 +8,8 @@ import type {
   DownloadProgress,
   Engine,
   ModelPacks,
+  RuntimeInfo,
+  RuntimeProgress,
   TtsStatus,
   VoiceInfo,
 } from "../lib/types";
@@ -15,7 +17,6 @@ import { useUi } from "./ui";
 
 const MAX_MESSAGES = 1000;
 const SAVE_DELAY_MS = 250;
-const ENGINES: Engine[] = ["silero", "piper"];
 
 export type LogMessage = ChatMessage & { id: number };
 export interface Toast {
@@ -37,6 +38,8 @@ interface AppStore {
   voices: Partial<Record<Engine, VoiceInfo[]>>;
   packs: ModelPacks | null;
   download: DownloadProgress | null;
+  runtime: RuntimeInfo | null;
+  runtimeProgress: RuntimeProgress | null;
   toasts: Toast[];
   wizardOpen: boolean;
 
@@ -55,6 +58,10 @@ interface AppStore {
   resumeDownload: () => Promise<void>;
   pauseDownload: () => Promise<void>;
   cancelDownload: () => Promise<void>;
+  installRuntimes: (python: boolean, pytorch: boolean) => Promise<void>;
+  cancelRuntimeInstall: () => Promise<void>;
+  /** Opens the setup dialog and returns false if offline TTS is not ready yet. */
+  ensureTtsReady: () => boolean;
 }
 
 let toastSeq = 0;
@@ -118,6 +125,8 @@ export const useApp = create<AppStore>((set, get) => {
     voices: {},
     packs: null,
     download: null,
+    runtime: null,
+    runtimeProgress: null,
     toasts: [],
     wizardOpen: false,
 
@@ -140,25 +149,27 @@ export const useApp = create<AppStore>((set, get) => {
           if (!saveTimer && !saving) set({ settings });
         }),
         on("models:progress", (download) => set({ download })),
+        on("runtime:progress", (runtimeProgress) => set({ runtimeProgress })),
         on("models:changed", () => {
           void get().refreshModels();
-          toast("ok", "Voice models installed. Offline TTS is ready.");
+          toast("ok", "Offline TTS components installed.");
         }),
       ]);
       try {
-        const [settings, status, download] = await Promise.all([
+        const [settings, status, download, runtimeProgress] = await Promise.all([
           api.getSettings(),
           api.connectionStatus(),
           api.downloadProgress(),
+          api.runtimeProgress(),
         ]);
-        set({ settings, status, download });
+        set({ settings, status, download, runtimeProgress });
         await api.setMuted(useUi.getState().muted);
         await get().refreshModels();
         const notice = await api.startupNotice();
         if (notice) toast("info", notice);
 
-        const anyInstalled = ENGINES.some((e) => get().voices[e]?.some((v) => v.installed));
-        if (!anyInstalled && !useUi.getState().setupDismissed) set({ wizardOpen: true });
+        // Anything missing (models or the programs they run on)? Ask before installing.
+        if (get().ttsStatus?.state !== "ready") set({ wizardOpen: true });
       } catch (e) {
         fail(e);
       }
@@ -201,12 +212,13 @@ export const useApp = create<AppStore>((set, get) => {
 
     refreshModels: async () => {
       try {
-        const [silero, piper, packs] = await Promise.all([
+        const [silero, piper, packs, runtime] = await Promise.all([
           api.listVoices("silero"),
           api.listVoices("piper"),
           api.modelPacks(),
+          api.runtimeInfo(),
         ]);
-        set({ voices: { silero, piper }, packs });
+        set({ voices: { silero, piper }, packs, runtime });
         await get().refreshTtsStatus();
       } catch (e) {
         fail(e);
@@ -220,9 +232,25 @@ export const useApp = create<AppStore>((set, get) => {
       }
     },
 
-    openWizard: (open) => {
-      set({ wizardOpen: open });
-      if (!open) useUi.getState().set({ setupDismissed: true });
+    openWizard: (open) => set({ wizardOpen: open }),
+    ensureTtsReady: () => {
+      if (get().ttsStatus?.state === "ready") return true;
+      set({ wizardOpen: true });
+      return false;
+    },
+    installRuntimes: async (python, pytorch) => {
+      try {
+        await api.installRuntimes(python, pytorch);
+      } catch (e) {
+        fail(e);
+      }
+    },
+    cancelRuntimeInstall: async () => {
+      try {
+        await api.cancelRuntimeInstall();
+      } catch (e) {
+        fail(e);
+      }
     },
     startDownload: async (ids) => {
       try {

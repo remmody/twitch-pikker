@@ -252,7 +252,7 @@ impl AppSettings {
         if !self.twitch.channel.trim().is_empty() {
             normalize_channel(&self.twitch.channel)?;
         }
-        if self.audio.sound == SoundChoice::Custom {
+        if self.audio.sound == SoundChoice::Custom && !self.audio.custom_sound_path.is_empty() {
             validate_sound(&self.audio.custom_sound_path)?;
         }
         for (field, v) in [

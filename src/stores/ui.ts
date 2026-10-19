@@ -8,7 +8,6 @@ interface UiState {
   tab: Tab;
   showTimestamps: boolean;
   muted: boolean;
-  setupDismissed: boolean;
   set: (patch: Partial<Omit<UiState, "set">>) => void;
 }
 
@@ -18,7 +17,6 @@ export const useUi = create<UiState>()(
       tab: "chat",
       showTimestamps: true,
       muted: false,
-      setupDismissed: false,
       set: (patch) => set(patch),
     }),
     { name: "tcr-ui" },

@@ -56,9 +56,25 @@ export interface VoiceInfo {
 }
 
 export type TtsReadiness = "ready" | "model_missing" | "runtime_missing";
+export type MissingRuntime = "no_python" | "no_torch" | "no_piper";
 export interface TtsStatus {
   state: TtsReadiness;
+  missing: MissingRuntime | null;
   detail: string;
+}
+
+export interface RuntimeInfo {
+  piper: boolean;
+  python: boolean;
+  torch: boolean;
+  can_install_python: boolean;
+}
+
+export interface RuntimeProgress {
+  state: DlState;
+  step: "python" | "pytorch" | null;
+  line: string;
+  error: string | null;
 }
 
 export interface ModelValidation {
@@ -120,4 +136,5 @@ export interface EventMap {
   "settings:updated": AppSettings;
   "models:progress": DownloadProgress;
   "models:changed": Record<string, never>;
+  "runtime:progress": RuntimeProgress;
 }

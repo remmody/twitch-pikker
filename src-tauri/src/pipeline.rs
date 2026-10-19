@@ -13,10 +13,10 @@ use crate::chat::{
 use crate::config::{AppPaths, AudioSettings, SharedSettings, SoundChoice, read};
 use crate::events::{EVT_AUDIO_ERROR, EVT_QUEUE_UPDATED, EVT_TTS_ERROR, Emit, emit};
 use crate::tts::TextToSpeech;
-use crate::tts::models;
 use crate::tts::piper::PiperTts;
 use crate::tts::silero::SileroTts;
 use crate::tts::voices::{TtsEngine, VoiceConfig};
+use crate::tts::{models, runtime};
 use serde_json::json;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -283,6 +283,9 @@ impl Pipeline {
         if a.sound != SoundChoice::Custom {
             return Sound::Builtin(a.sound);
         }
+        if a.custom_sound_path.is_empty() {
+            return Sound::Builtin(SoundChoice::DefaultPing); // "custom" chosen but no file yet
+        }
         let mut cache = lock(&self.sound);
         if let Some((p, bytes)) = cache.as_ref()
             && *p == a.custom_sound_path
@@ -338,12 +341,20 @@ impl Pipeline {
                 .clone()
                 .unwrap_or((s.tts.engine, s.tts.voice.clone()));
             let dir = self.paths.models_dir(&s);
+            let resolved = match kind {
+                TtsEngine::Silero => runtime::resolve_silero_python(&s.tts.python, &dir),
+                TtsEngine::Piper => runtime::resolve_piper(&s.tts.piper_binary, &dir),
+            };
+            let Some(resolved) = resolved else {
+                self.report_tts(Some(format!(
+                    "{}: its program is not installed. Open Voice → Set up offline voices.",
+                    kind.label()
+                )));
+                continue;
+            };
             let voice = VoiceConfig {
                 model_path: models::model_path(kind, &voice_id, &dir),
-                runtime: match kind {
-                    TtsEngine::Silero => s.tts.python.clone(),
-                    TtsEngine::Piper => s.tts.piper_binary.clone(),
-                },
+                runtime: resolved.to_string_lossy().into_owned(),
                 voice: voice_id,
                 speed: s.tts.speed,
             };

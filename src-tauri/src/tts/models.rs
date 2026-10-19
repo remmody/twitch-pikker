@@ -10,6 +10,8 @@ pub struct PackFile {
     pub rel: &'static str,
     pub size: Option<u64>,
     pub sha256: Option<&'static str>,
+    /// If set, the file is an archive extracted into this folder (under the models folder) and then deleted.
+    pub extract: Option<&'static str>,
 }
 
 /// A downloadable set of files that makes one or more voices usable.
@@ -20,6 +22,8 @@ pub struct Pack {
     pub engine: TtsEngine,
     pub approx_mb: u32,
     pub default_selected: bool,
+    /// If set, the pack counts as installed when this file (under the models folder) exists.
+    pub marker: Option<&'static str>,
     pub files: &'static [PackFile],
 }
 
@@ -37,6 +41,7 @@ macro_rules! piper_pack {
             engine: TtsEngine::Piper,
             approx_mb: 61,
             default_selected: $default,
+            marker: None,
             files: &[
                 PackFile {
                     url: concat!(
@@ -46,6 +51,7 @@ macro_rules! piper_pack {
                     rel: concat!("piper/ru_RU-", $dir, "-medium.onnx"),
                     size: Some(63_201_294),
                     sha256: Some($sha),
+                    extract: None,
                 },
                 PackFile {
                     url: concat!(
@@ -55,13 +61,92 @@ macro_rules! piper_pack {
                     rel: concat!("piper/ru_RU-", $dir, "-medium.onnx.json"),
                     size: None,
                     sha256: None,
+                    extract: None,
                 },
             ],
         }
     };
 }
 
+// Piper program (official release 2023.11.14-2). SHA-256 values were recorded from a one-time
+// download of each archive (GitHub publishes none), and are pinned together with the size.
+
+macro_rules! piper_runtime_file {
+    ($archive:literal, $size:expr, $sha:literal) => {
+        &[PackFile {
+            url: concat!(
+                "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/",
+                $archive
+            ),
+            rel: concat!("runtime/", $archive),
+            size: Some($size),
+            sha256: Some($sha),
+            extract: Some("runtime"),
+        }]
+    };
+}
+
+#[cfg(all(windows, target_arch = "x86_64"))]
+const PIPER_RUNTIME_FILES: &[PackFile] = piper_runtime_file!(
+    "piper_windows_amd64.zip",
+    22_477_236,
+    "f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea"
+);
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const PIPER_RUNTIME_FILES: &[PackFile] = piper_runtime_file!(
+    "piper_linux_x86_64.tar.gz",
+    26_460_462,
+    "a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992"
+);
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const PIPER_RUNTIME_FILES: &[PackFile] = piper_runtime_file!(
+    "piper_linux_aarch64.tar.gz",
+    26_004_717,
+    "fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1537ab88eb"
+);
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+const PIPER_RUNTIME_FILES: &[PackFile] = piper_runtime_file!(
+    "piper_macos_x64.tar.gz",
+    19_146_927,
+    "ced85c0a3df13945b1e623b878a48fdc2854d5c485b4b67f62857cf551deaf8b"
+);
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const PIPER_RUNTIME_FILES: &[PackFile] = piper_runtime_file!(
+    "piper_macos_aarch64.tar.gz",
+    19_146_957,
+    "6b1eb03b3735946cb35216e063e7eebcc33a6bbf5dd96ec0217959bf1cdcb0cc"
+);
+#[cfg(not(any(
+    all(windows, target_arch = "x86_64"),
+    all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ),
+    all(
+        target_os = "macos",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ),
+)))]
+const PIPER_RUNTIME_FILES: &[PackFile] = &[];
+
+/// Piper program location after extraction, relative to the models folder.
+pub const PIPER_EXE_REL: &str = if cfg!(windows) {
+    "runtime/piper/piper.exe"
+} else {
+    "runtime/piper/piper"
+};
+
 pub const PACKS: &[Pack] = &[
+    Pack {
+        id: "piper_runtime",
+        label: "Piper program",
+        description: "The offline speech engine that runs the Piper voices.",
+        engine: TtsEngine::Piper,
+        approx_mb: 25,
+        default_selected: true,
+        marker: Some(PIPER_EXE_REL),
+        files: PIPER_RUNTIME_FILES,
+    },
     Pack {
         id: "silero_v4_ru",
         label: "Silero v4 Russian (5 voices)",
@@ -69,11 +154,13 @@ pub const PACKS: &[Pack] = &[
         engine: TtsEngine::Silero,
         approx_mb: 38,
         default_selected: true,
+        marker: None,
         files: &[PackFile {
             url: "https://models.silero.ai/models/tts/ru/v4_ru.pt",
             rel: "silero/v4_ru.pt",
             size: Some(40_107_184),
             sha256: Some("896ab96347d5bd781ab97959d4fd6885620e5aab52405d3445626eb7c1414b00"),
+            extract: None,
         }],
     },
     piper_pack!(
@@ -129,7 +216,10 @@ pub fn pack_installed_file(f: &PackFile, dir: &Path) -> bool {
 }
 
 pub fn pack_installed(p: &Pack, dir: &Path) -> bool {
-    p.files.iter().all(|f| locate(dir, f.rel).is_some())
+    match p.marker {
+        Some(m) => dir.join(m).is_file(),
+        None => p.files.iter().all(|f| locate(dir, f.rel).is_some()),
+    }
 }
 
 const SILERO_REL: &str = "silero/v4_ru.pt";
@@ -292,37 +382,64 @@ pub enum TtsReadiness {
     RuntimeMissing,
 }
 
+/// What is missing on the machine for an engine to run.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeState {
+    Ok,
+    NoPython,
+    NoTorch,
+    NoPiper,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TtsStatus {
     pub state: TtsReadiness,
+    /// Set when `state == runtime_missing`; tells the UI what to offer to install.
+    pub missing: Option<RuntimeState>,
     pub detail: String,
 }
 
-/// Offline readiness of an engine/voice: model on disk and runtime executable found.
-pub fn status(engine: TtsEngine, voice: &str, dir: &Path, runtime: &str) -> TtsStatus {
-    if !is_installed(engine, voice, dir) {
-        return TtsStatus {
-            state: TtsReadiness::ModelMissing,
-            detail: format!(
+/// Offline readiness of an engine/voice: model on disk and runtime available.
+pub fn status(engine: TtsEngine, voice: &str, dir: &Path, runtime: RuntimeState) -> TtsStatus {
+    let (state, missing, detail) = if !is_installed(engine, voice, dir) {
+        (
+            TtsReadiness::ModelMissing,
+            None,
+            format!(
                 "{} model for '{voice}' not found in {}",
                 engine.label(),
                 dir.display()
             ),
-        };
-    }
-    if find_executable(runtime).is_none() {
-        let what = match engine {
-            TtsEngine::Silero => "Python (with PyTorch)",
-            TtsEngine::Piper => "the Piper executable",
-        };
-        return TtsStatus {
-            state: TtsReadiness::RuntimeMissing,
-            detail: format!("'{runtime}' not found. Install {what} or set its path in Settings."),
-        };
-    }
+        )
+    } else {
+        match runtime {
+            RuntimeState::Ok => (
+                TtsReadiness::Ready,
+                None,
+                format!("{} / {voice}", engine.label()),
+            ),
+            RuntimeState::NoPython => (
+                TtsReadiness::RuntimeMissing,
+                Some(runtime),
+                "Python was not found (needed by Silero).".to_owned(),
+            ),
+            RuntimeState::NoTorch => (
+                TtsReadiness::RuntimeMissing,
+                Some(runtime),
+                "PyTorch is not installed for Python (needed by Silero).".to_owned(),
+            ),
+            RuntimeState::NoPiper => (
+                TtsReadiness::RuntimeMissing,
+                Some(runtime),
+                "The Piper program was not found.".to_owned(),
+            ),
+        }
+    };
     TtsStatus {
-        state: TtsReadiness::Ready,
-        detail: format!("{} / {voice}", engine.label()),
+        state,
+        missing,
+        detail,
     }
 }
 
@@ -364,7 +481,7 @@ mod tests {
         assert!(!is_installed(TtsEngine::Silero, "kseniya", &d));
         assert!(!validate_folder(&d.join("nope")).ok);
         assert_eq!(
-            status(TtsEngine::Piper, "ru_RU-irina-medium", &d, "piper").state,
+            status(TtsEngine::Piper, "ru_RU-irina-medium", &d, RuntimeState::Ok).state,
             TtsReadiness::ModelMissing
         );
     }
@@ -410,12 +527,12 @@ mod tests {
     fn runtime_missing_is_reported() {
         let d = tmp("rt");
         std::fs::write(d.join("v4_ru.pt"), b"x").unwrap();
-        let s = status(
-            TtsEngine::Silero,
-            "baya",
-            &d,
-            "definitely-not-a-real-binary-xyz",
-        );
+        let s = status(TtsEngine::Silero, "baya", &d, RuntimeState::NoTorch);
         assert_eq!(s.state, TtsReadiness::RuntimeMissing);
+        assert_eq!(s.missing, Some(RuntimeState::NoTorch));
+        assert_eq!(
+            status(TtsEngine::Silero, "baya", &d, RuntimeState::Ok).state,
+            TtsReadiness::Ready
+        );
     }
 }

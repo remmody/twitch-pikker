@@ -277,10 +277,14 @@ impl Downloader {
         let mut files: Vec<&'static PackFile> = Vec::new();
         for id in &pack_ids {
             let p = models::pack(id).ok_or_else(|| format!("unknown model pack '{id}'"))?;
+            if models::pack_installed(p, &dir) {
+                continue;
+            }
+            // Archive packs (marker) are all-or-nothing; voice packs resume per file.
             files.extend(
                 p.files
                     .iter()
-                    .filter(|f| !models::pack_installed_file(f, &dir)),
+                    .filter(|f| p.marker.is_some() || !models::pack_installed_file(f, &dir)),
             );
         }
         if pack_ids.is_empty() {
@@ -480,6 +484,22 @@ async fn run(
             &mut on_progress,
         )
         .await;
+        if result.is_ok()
+            && let Some(sub) = f.extract
+        {
+            let (archive, target) = (dest.clone(), dir.join(sub));
+            result = match tokio::task::spawn_blocking(move || {
+                let r = super::runtime::extract_archive(&archive, &target);
+                let _ = std::fs::remove_file(&archive);
+                r
+            })
+            .await
+            {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(m)) => Err(DlError::Failed(m)),
+                Err(e) => Err(fail(e)),
+            };
+        }
         if result.is_err() {
             break;
         }
@@ -674,5 +694,40 @@ mod tests {
         )
         .await;
         assert!(matches!(r, Err(DlError::Failed(_))));
+    }
+}
+
+#[cfg(all(test, feature = "integration-tests"))]
+mod integration {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "downloads the Piper program (~25 MB) from GitHub"]
+    async fn installs_piper_runtime() {
+        let dir = std::env::temp_dir().join(format!("tcr-int-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let emit: Emit = Arc::new(|_, _| {});
+        let dl = Downloader::new(emit);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let tx = Mutex::new(Some(tx));
+        let done: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            if let Some(t) = tx.lock().unwrap().take() {
+                let _ = t.send(());
+            }
+        });
+        dl.start(
+            &tokio::runtime::Handle::current(),
+            vec!["piper_runtime".into()],
+            dir.clone(),
+            done,
+        )
+        .unwrap();
+        tokio::time::timeout(Duration::from_secs(300), rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(dir.join(models::PIPER_EXE_REL).is_file());
+        assert!(!dir.join("runtime").join("piper_windows_amd64.zip").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

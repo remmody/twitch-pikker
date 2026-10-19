@@ -5,6 +5,7 @@
 pub mod download;
 pub mod models;
 pub mod piper;
+pub mod runtime;
 pub mod silero;
 pub mod voices;
 

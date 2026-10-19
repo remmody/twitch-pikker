@@ -36,6 +36,7 @@ export function Header() {
   const connect = useApp((s) => s.connect);
   const disconnect = useApp((s) => s.disconnect);
   const setMuted = useApp((s) => s.setMuted);
+  const ensureTtsReady = useApp((s) => s.ensureTtsReady);
   const muted = useUi((s) => s.muted);
   const [draft, setDraft] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -89,7 +90,10 @@ export function Header() {
       <div className="ml-auto flex flex-wrap items-center gap-4">
         <span className="text-sm tabular-nums text-muted" aria-label="Messages this session">{count.toLocaleString()} msgs</span>
         <div className="flex items-center gap-4">
-          <Switch label="TTS" checked={settings.tts.enabled} onChange={(v) => update((s) => void (s.tts.enabled = v))} />
+          <Switch label="TTS" checked={settings.tts.enabled} onChange={(v) => {
+              update((s) => void (s.tts.enabled = v));
+              if (v) ensureTtsReady();
+            }} />
           <Switch label="Sound" checked={settings.notifications.enabled} onChange={(v) => update((s) => void (s.notifications.enabled = v))} />
         </div>
         <Button

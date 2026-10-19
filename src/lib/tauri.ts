@@ -7,6 +7,8 @@ import type {
   Engine,
   ModelPacks,
   ModelValidation,
+  RuntimeInfo,
+  RuntimeProgress,
   TtsStatus,
   VoiceInfo,
 } from "./types";
@@ -45,6 +47,12 @@ export const api = {
   pauseDownload: () => call<void>("pause_model_download"),
   cancelDownload: () => call<void>("cancel_model_download"),
   downloadProgress: () => call<DownloadProgress>("get_download_progress"),
+
+  runtimeInfo: () => call<RuntimeInfo>("get_runtime_info"),
+  installRuntimes: (python: boolean, pytorch: boolean) => call<void>("install_runtimes", { python, pytorch }),
+  cancelRuntimeInstall: () => call<void>("cancel_runtime_install"),
+  runtimeProgress: () => call<RuntimeProgress>("get_runtime_progress"),
+  recheckRuntimes: () => call<void>("recheck_runtimes"),
 
   testNotification: () => call<void>("test_notification_sound"),
   pickSound: () => call<string | null>("pick_notification_sound"),

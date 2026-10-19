@@ -11,6 +11,7 @@ pub const EVT_AUDIO_ERROR: &str = "audio:error";
 pub const EVT_SETTINGS_UPDATED: &str = "settings:updated";
 pub const EVT_MODELS_PROGRESS: &str = "models:progress";
 pub const EVT_MODELS_CHANGED: &str = "models:changed";
+pub const EVT_RUNTIME_PROGRESS: &str = "runtime:progress";
 
 pub type Emit = Arc<dyn Fn(&'static str, serde_json::Value) + Send + Sync>;
 

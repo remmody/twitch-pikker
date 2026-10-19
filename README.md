@@ -80,8 +80,9 @@ Builds are unsigned unless you configure signing yourself.
 
 On first launch, if no voices are installed, a wizard offers to download them. **Nothing is downloaded until you give explicit consent and click Download.** Files are SHA-256 verified; downloads can be paused, resumed, retried and cancelled.
 
-- **Silero v4_ru** (about 38 MB, five voices): stored as `models/silero/v4_ru.pt`. Silero runs through a local Python helper, so install Python and `pip install torch numpy`. The model is loaded from disk; nothing is fetched at runtime.
-- **Piper** (about 61 MB per voice): stored as `models/piper/<voice>.onnx` plus `<voice>.onnx.json`. Install the `piper` executable from the [Piper releases](https://github.com/rhasspy/piper/releases) and put it on `PATH`, or set its path in Settings.
+- **Silero v4_ru** (about 38 MB, five voices): `models/silero/v4_ru.pt`. Silero runs through a local Python helper that needs Python and PyTorch. The wizard can install both: Python via `winget` on Windows (on Linux and macOS install Python 3.10+ yourself), and the CPU build of PyTorch into a private environment in `models/runtime/venv` (about 200 MB), leaving your system Python untouched. The model is loaded from disk; nothing is fetched at runtime.
+- **Piper** (about 61 MB per voice): `models/piper/<voice>.onnx` plus `<voice>.onnx.json`. The wizard also downloads the official Piper program (about 25 MB, SHA-256 verified) into `models/runtime/piper`. A `piper` already on `PATH` is used instead if present.
+- Whenever a required model or program is missing, the wizard opens by itself and asks for confirmation before installing anything. Enabling TTS or pressing Test voice while something is missing reopens it.
 - Manual install: place the files in the layout above, or use **Voice → Choose models folder**. Extra Piper `.onnx` + `.json` pairs in `models/piper` appear as voices automatically.
 
 **Female and male Russian voices:** open **Voice**, pick the engine, filter by gender, and select a voice.

@@ -27,6 +27,7 @@ export function VoiceView() {
   const toast = useApp((s) => s.toast);
   const openWizard = useApp((s) => s.openWizard);
   const refreshModels = useApp((s) => s.refreshModels);
+  const ensureTtsReady = useApp((s) => s.ensureTtsReady);
   const ttsError = useApp((s) => s.ttsError);
   const [query, setQuery] = useState("");
   const [gender, setGender] = useState<GenderFilter>("all");
@@ -80,6 +81,7 @@ export function VoiceView() {
     });
 
   const preview = async (id: string) => {
+    if (!ensureTtsReady()) return;
     setPreviewing(id);
     await speak(engine, id, sample);
     setPreviewing(null);
@@ -171,7 +173,7 @@ export function VoiceView() {
           <div className="min-w-64 flex-1">
             <Field label="Test text">{(p) => <input {...p} maxLength={300} className={inputCls} value={sample} onChange={(e) => setSample(e.target.value)} />}</Field>
           </div>
-          <Button variant="primary" icon={<Play className="h-4 w-4" />} loading={speaking && previewing === null} disabled={speaking || !sample.trim()} onClick={() => void speak(engine, t.voice, sample)}>
+          <Button variant="primary" icon={<Play className="h-4 w-4" />} loading={speaking && previewing === null} disabled={speaking || !sample.trim()} onClick={() => ensureTtsReady() && void speak(engine, t.voice, sample)}>
             Test voice
           </Button>
         </div>

@@ -1,7 +1,8 @@
 use super::St;
 use crate::errors::{AppError, AppResult};
 use crate::tts::download::DownloadProgress;
-use crate::tts::models::{self, ModelValidation, TtsStatus};
+use crate::tts::models::{self, ModelValidation, RuntimeState, TtsStatus};
+use crate::tts::runtime::{self, RuntimeProgress};
 use crate::tts::voices::{TtsEngine, VoiceInfo};
 use serde::Serialize;
 use std::path::Path;
@@ -57,11 +58,8 @@ pub async fn validate_tts_model(path: String) -> AppResult<ModelValidation> {
 pub async fn get_tts_status(state: St<'_>) -> AppResult<TtsStatus> {
     let s = state.settings();
     let dir = state.paths.models_dir(&s);
-    let runtime = match s.tts.engine {
-        TtsEngine::Silero => s.tts.python.clone(),
-        TtsEngine::Piper => s.tts.piper_binary.clone(),
-    };
-    Ok(models::status(s.tts.engine, &s.tts.voice, &dir, &runtime))
+    let rt = state.runtime_state(s.tts.engine, &s).await;
+    Ok(models::status(s.tts.engine, &s.tts.voice, &dir, rt))
 }
 
 #[derive(Serialize)]
@@ -83,11 +81,13 @@ pub struct ModelPacks {
 
 #[tauri::command]
 pub async fn get_model_packs(state: St<'_>) -> AppResult<ModelPacks> {
-    let dir = state.paths.models_dir(&state.settings());
+    let s = state.settings();
+    let dir = state.paths.models_dir(&s);
     Ok(ModelPacks {
         models_dir: dir.display().to_string(),
         packs: models::PACKS
             .iter()
+            .filter(|p| !p.files.is_empty()) // no Piper build for this platform => no pack
             .map(|p| PackInfo {
                 id: p.id,
                 label: p.label,
@@ -95,7 +95,11 @@ pub async fn get_model_packs(state: St<'_>) -> AppResult<ModelPacks> {
                 engine: p.engine,
                 approx_mb: p.approx_mb,
                 default_selected: p.default_selected,
-                installed: models::pack_installed(p, &dir),
+                installed: if p.id == "piper_runtime" {
+                    runtime::resolve_piper(&s.tts.piper_binary, &dir).is_some()
+                } else {
+                    models::pack_installed(p, &dir)
+                },
             })
             .collect(),
     })
@@ -139,4 +143,62 @@ pub async fn cancel_model_download(state: St<'_>) -> AppResult<()> {
 #[tauri::command]
 pub async fn get_download_progress(state: St<'_>) -> AppResult<DownloadProgress> {
     Ok(state.downloader.progress())
+}
+
+#[derive(Serialize)]
+pub struct RuntimeInfo {
+    piper: bool,
+    python: bool,
+    torch: bool,
+    /// Python can be installed automatically (Windows, via winget).
+    can_install_python: bool,
+}
+
+/// What the offline engines need and what is present, for the setup wizard.
+#[tauri::command]
+pub async fn get_runtime_info(state: St<'_>) -> AppResult<RuntimeInfo> {
+    let s = state.settings();
+    let dir = state.paths.models_dir(&s);
+    Ok(RuntimeInfo {
+        piper: runtime::resolve_piper(&s.tts.piper_binary, &dir).is_some(),
+        python: runtime::resolve_silero_python(&s.tts.python, &dir).is_some(),
+        torch: state.runtime_state(TtsEngine::Silero, &s).await == RuntimeState::Ok,
+        can_install_python: cfg!(windows),
+    })
+}
+
+/// Installs Python (Windows) and/or PyTorch (private venv). Only called from an explicit user click.
+#[tauri::command]
+pub async fn install_runtimes(state: St<'_>, python: bool, pytorch: bool) -> AppResult<()> {
+    let s = state.settings();
+    let dir = state.paths.models_dir(&s);
+    let st = state.inner().clone();
+    state.invalidate_runtime_cache();
+    let done: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        st.invalidate_runtime_cache();
+        st.finish_install();
+    });
+    state
+        .installer
+        .start(&state.rt, python, pytorch, s.tts.python, dir, done)
+        .map_err(AppError::msg)
+}
+
+#[tauri::command]
+pub async fn cancel_runtime_install(state: St<'_>) -> AppResult<()> {
+    state.installer.cancel();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_runtime_progress(state: St<'_>) -> AppResult<RuntimeProgress> {
+    Ok(state.installer.progress())
+}
+
+/// Forget the cached PyTorch check (after the user installed something by hand).
+#[tauri::command]
+pub async fn recheck_runtimes(state: St<'_>) -> AppResult<()> {
+    state.invalidate_runtime_cache();
+    state.finish_install();
+    Ok(())
 }
