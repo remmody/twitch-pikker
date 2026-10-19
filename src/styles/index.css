@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 244 245 248;
+  --surface: 255 255 255;
+  --surface2: 238 240 245;
+  --line: 214 218 228;
+  --fg: 20 22 30;
+  --muted: 88 94 112;
+  --accent: 119 44 232;
+  --accent-fg: 255 255 255;
+  --ok: 21 128 61;
+  --warn: 180 83 9;
+  --bad: 185 28 28;
+  --user-l: 36%;
+  color-scheme: light;
+}
+
+:root.dark {
+  --bg: 13 14 18;
+  --surface: 22 24 31;
+  --surface2: 30 33 43;
+  --line: 44 48 62;
+  --fg: 236 238 244;
+  --muted: 152 158 176;
+  --accent: 145 100 255;
+  --accent-fg: 12 10 20;
+  --ok: 74 222 128;
+  --warn: 251 191 36;
+  --bad: 248 113 113;
+  --user-l: 70%;
+  color-scheme: dark;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-bg text-fg font-sans antialiased; margin: 0; overflow: hidden; }
+
+*:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; border-radius: 6px; }
+
+input[type="range"] { accent-color: rgb(var(--accent)); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgb(var(--line)); border-radius: 8px; border: 2px solid rgb(var(--bg)); }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted) / 0.6); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

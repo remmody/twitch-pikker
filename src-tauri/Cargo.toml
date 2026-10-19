@@ -1,0 +1,41 @@
+[package]
+name = "twitch-pikker"
+version = "0.1.0"
+description = "Offline Twitch chat reader with Russian TTS and notification sounds"
+authors = ["RemmoDY"]
+license = "MIT"
+repository = "https://github.com/remmody/twitch-pikker"
+readme = "../README.md"
+edition = "2024"
+
+[lib]
+name = "twitch_pikker_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+async-trait = "0.1.92"
+chrono = "0.4.45"
+dirs = "7.0.0"
+futures-util = "0.3.34"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream"] }
+rodio = "0.23.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+thiserror = "2.0.21"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util", "fs"] }
+tokio-util = "0.7.20"
+toml = "1.1.8"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+twitch-irc = { version = "6.1.3", default-features = false, features = ["transport-tcp", "transport-tcp-rustls-webpki-roots"] }
+
+[features]
+# Enables #[ignore]d tests that need a real audio device / Piper install.
+integration-tests = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
